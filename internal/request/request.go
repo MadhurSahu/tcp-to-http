@@ -120,5 +120,5 @@ func parseRequestLine(data []byte) (int, *Line, error) {
 		HttpVersion:   version,
 	}
 
-	return headerCount, requestLine, nil
+	return headerCount + 2, requestLine, nil
 }
