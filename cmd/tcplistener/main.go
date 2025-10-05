@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"strings"
+
+	"github.com/MadhurSahu/tcp-to-http/internal/request"
 )
 
 func main() {
@@ -23,49 +23,17 @@ func main() {
 		}
 
 		fmt.Println("Connection accepted from", conn.RemoteAddr())
-		ch := getLinesChannel(conn)
 
-		for line := range ch {
-			fmt.Println(line)
+		req, err := request.FromReader(conn)
+		if err != nil {
+			log.Println(err)
 		}
+
+		fmt.Println("Request line:")
+		fmt.Println("- Method:", req.RequestLine.Method)
+		fmt.Println("- Target:", req.RequestLine.RequestTarget)
+		fmt.Println("- Version:", req.RequestLine.HttpVersion)
 
 		fmt.Println("Connection to", conn.RemoteAddr(), "closed")
 	}
-
-}
-
-func getLinesChannel(f io.ReadCloser) <-chan string {
-	ch := make(chan string)
-	buffer := ""
-
-	go func() {
-		for {
-			data := make([]byte, 8)
-			n, err := f.Read(data)
-
-			if err != nil {
-				if buffer != "" {
-					ch <- buffer
-				}
-
-				if err == io.EOF {
-					close(ch)
-					return
-				}
-
-				log.Fatal(err)
-			}
-
-			buffer += string(data[:n])
-			lines := strings.Split(buffer, "\n")
-
-			for i := 0; i < len(lines)-1; i++ {
-				ch <- lines[i]
-			}
-
-			buffer = lines[len(lines)-1]
-		}
-	}()
-
-	return ch
 }
