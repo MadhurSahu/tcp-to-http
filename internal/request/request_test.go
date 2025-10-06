@@ -59,4 +59,54 @@ func TestRequestLineParse(t *testing.T) {
 	// Test: Invalid number of parts in the request line
 	_, err = FromReader(strings.NewReader("/coffee HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n"))
 	require.Error(t, err)
+
+	// Test: Standard Headers
+	reader = &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHost: localhost:42069\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err = FromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	assert.Equal(t, "localhost:42069", r.Headers["host"])
+	assert.Equal(t, "curl/7.81.0", r.Headers["user-agent"])
+	assert.Equal(t, "*/*", r.Headers["accept"])
+
+	// Test: Empty Headers
+	reader = &chunkReader{
+		data:            "GET / HTTP/1.1\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err = FromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	assert.Equal(t, 0, len(r.Headers))
+
+	// Test: Duplicate Headers
+	reader = &chunkReader{
+		data:            "GET / HTTP/1.1\r\nPerson: Madhur\r\nPerson: Preeti\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err = FromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	assert.Equal(t, "Madhur, Preeti", r.Headers["person"])
+
+	// Test: Case insensitive headers
+	reader = &chunkReader{
+		data:            "GET / HTTP/1.1\r\nperson: Madhur\r\nPerson: Preeti\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err = FromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	assert.Equal(t, "Madhur, Preeti", r.Headers["person"])
+
+	// Test: Malformed Header
+	reader = &chunkReader{
+		data:            "GET / HTTP/1.1\r\nHost localhost:42069\r\n\r\n",
+		numBytesPerRead: 3,
+	}
+	r, err = FromReader(reader)
+	require.Error(t, err)
 }
