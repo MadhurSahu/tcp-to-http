@@ -52,6 +52,35 @@ func handler(w *response.Writer, req *request.Request) *server.HandlerError {
 		return badRequestError
 	}
 
+	if path == "/video" {
+		err := w.WriteStatusLine(response.StatusCodeOK)
+		if err != nil {
+			log.Println(err)
+			return internalError
+		}
+
+		file, err := os.ReadFile("assets/vim.mp4")
+		if err != nil {
+			log.Println(err)
+			return internalError
+		}
+
+		h := headers.GetDefaultHeaders(len(file))
+		h.Overwrite("Content-Type", "video/mp4")
+		err = w.WriteHeaders(h)
+		if err != nil {
+			log.Println(err)
+			return internalError
+		}
+
+		_, err = w.WriteBody(file)
+		if err != nil {
+			log.Println(err)
+			return internalError
+		}
+		return nil
+	}
+
 	if strings.HasPrefix(path, "/httpbin/") {
 		endpoint := strings.TrimPrefix(path, "/httpbin/")
 
