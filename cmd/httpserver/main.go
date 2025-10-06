@@ -1,9 +1,14 @@
 package main
 
 import (
+	"crypto/sha256"
+	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/MadhurSahu/tcp-to-http/internal/headers"
@@ -29,19 +34,101 @@ func main() {
 }
 
 func handler(w *response.Writer, req *request.Request) *server.HandlerError {
+	path := req.RequestLine.RequestTarget
+
 	internalError := &server.HandlerError{
 		StatusCode: response.StatusCodeInternalServerError,
 	}
 
-	switch req.RequestLine.RequestTarget {
-	case "/yourproblem":
-		return &server.HandlerError{
-			StatusCode: response.StatusCodeBadRequest,
-		}
-	case "/myproblem":
+	badRequestError := &server.HandlerError{
+		StatusCode: response.StatusCodeBadRequest,
+	}
+
+	if path == "/myproblem" {
 		return internalError
-	default:
-		body := `<html>
+	}
+
+	if path == "/yourproblem" {
+		return badRequestError
+	}
+
+	if strings.HasPrefix(path, "/httpbin/") {
+		endpoint := strings.TrimPrefix(path, "/httpbin/")
+
+		if endpoint == "" {
+			return badRequestError
+		}
+
+		err := w.WriteStatusLine(response.StatusCodeOK)
+		if err != nil {
+			return internalError
+		}
+
+		h := headers.GetDefaultHeaders(0)
+		h.Delete("Content-Length")
+		h.Overwrite("Transfer-Encoding", "chunked")
+		h.Overwrite("Trailer", "X-Content-SHA256, X-Content-Length")
+
+		err = w.WriteHeaders(h)
+		if err != nil {
+			log.Println(err)
+			return internalError
+		}
+
+		//docker run -p 8080:80 kennethreitz/httpbin
+		res, err := http.Get("http://localhost:8080/" + endpoint)
+		if err != nil {
+			log.Println(err)
+			return internalError
+		}
+		defer res.Body.Close()
+
+		full := make([]byte, 0)
+		body := make([]byte, 1024)
+
+		for {
+			n, err := res.Body.Read(body)
+			if n > 0 {
+				_, err = w.WriteChunkedBody(body[:n])
+				if err != nil {
+					fmt.Println("Error writing chunked body:", err)
+					break
+				}
+				full = append(full, body[:n]...)
+			}
+
+			if err == io.EOF {
+				break
+			}
+
+			if err != nil {
+				log.Println(err)
+				return internalError
+			}
+		}
+
+		_, err = w.WriteChunkedBodyDone()
+		if err != nil {
+			log.Println(err)
+			return internalError
+		}
+
+		checksum := fmt.Sprintf("%x", sha256.Sum256(full))
+		contentLength := fmt.Sprintf("%d", len(full))
+		trailerHeaders := headers.NewHeaders()
+		trailerHeaders.Set("X-Content-SHA256", checksum)
+		trailerHeaders.Set("X-Content-Length", contentLength)
+
+		err = w.WriteTrailers(trailerHeaders)
+		if err != nil {
+			log.Println(err)
+			return internalError
+		}
+
+		return nil
+	}
+
+	body := `<html>
   <head>
     <title>200 OK</title>
   </head>
@@ -51,22 +138,21 @@ func handler(w *response.Writer, req *request.Request) *server.HandlerError {
   </body>
 </html>`
 
-		err := w.WriteStatusLine(response.StatusCodeOK)
-		if err != nil {
-			return internalError
-		}
-
-		defaultHeaders := headers.GetDefaultHeaders(len(body))
-		defaultHeaders.Overwrite("Content-Type", "text/html")
-		err = w.WriteHeaders(defaultHeaders)
-		if err != nil {
-			return internalError
-		}
-
-		_, err = w.WriteBody([]byte(body))
-		if err != nil {
-			return internalError
-		}
-		return nil
+	err := w.WriteStatusLine(response.StatusCodeOK)
+	if err != nil {
+		return internalError
 	}
+
+	h := headers.GetDefaultHeaders(len(body))
+	h.Overwrite("Content-Type", "text/html")
+	err = w.WriteHeaders(h)
+	if err != nil {
+		return internalError
+	}
+
+	_, err = w.WriteBody([]byte(body))
+	if err != nil {
+		return internalError
+	}
+	return nil
 }

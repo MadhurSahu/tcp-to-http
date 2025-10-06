@@ -13,20 +13,13 @@ func NewHeaders() Headers {
 	return make(map[string]string)
 }
 
+func (h Headers) Delete(key string) {
+	delete(h, strings.ToLower(key))
+}
+
 func (h Headers) Get(key string) (string, bool) {
 	val, ok := h[strings.ToLower(key)]
 	return val, ok
-}
-
-func (h Headers) Set(key, val string) {
-	key = strings.ToLower(key)
-	v, exists := h[key]
-
-	if exists {
-		h[key] = v + ", " + val
-	} else {
-		h[key] = val
-	}
 }
 
 func (h Headers) Overwrite(key, val string) {
@@ -65,6 +58,17 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	}
 
 	return len(header) + 2, false, nil
+}
+
+func (h Headers) Set(key, val string) {
+	key = strings.ToLower(key)
+	v, exists := h[key]
+
+	if exists {
+		h[key] = v + ", " + val
+	} else {
+		h[key] = val
+	}
 }
 
 func GetDefaultHeaders(contentLen int) Headers {

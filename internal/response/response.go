@@ -1,6 +1,7 @@
 package response
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -22,6 +23,7 @@ const (
 	WriteStatusLine = iota
 	WriteStatusHeaders
 	WriteStatusBody
+	WriteStatusTrailers
 )
 
 const (
@@ -68,6 +70,34 @@ func (w *Writer) WriteBody(data []byte) (int, error) {
 	}
 
 	return len(data), nil
+}
+
+func (w *Writer) WriteChunkedBody(data []byte) (int, error) {
+	if w.status != WriteStatusBody {
+		return 0, errors.New("cannot write body yet (or has already been written)")
+	}
+
+	if len(data) == 0 {
+		return 0, nil
+	}
+
+	var buffer bytes.Buffer
+	buffer.WriteString(fmt.Sprintf("%x\r\n", len(data)))
+	buffer.Write(data)
+	buffer.WriteString("\r\n")
+
+	n, err := w.writer.Write(buffer.Bytes())
+	return n, err
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	if w.status != WriteStatusBody {
+		return 0, errors.New("cannot write body yet (or has already been written)")
+	}
+
+	body := []byte("0\r\n")
+	w.status = WriteStatusTrailers
+	return w.writer.Write(body)
 }
 
 func (w *Writer) WriteError(code StatusCode) error {
@@ -132,5 +162,20 @@ func (w *Writer) WriteStatusLine(code StatusCode) error {
 
 	_, err := w.writer.Write([]byte(str + "\r\n"))
 	w.status = WriteStatusHeaders
+	return err
+}
+
+func (w *Writer) WriteTrailers(h headers.Headers) error {
+	if w.status != WriteStatusTrailers {
+		return errors.New("cannot write trailers yet (or has already been written)")
+	}
+
+	for key, val := range h {
+		_, err := w.writer.Write([]byte(key + ": " + val + "\r\n"))
+		if err != nil {
+			return err
+		}
+	}
+	_, err := w.writer.Write([]byte("\r\n"))
 	return err
 }

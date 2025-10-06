@@ -5,6 +5,7 @@ import (
 	"net"
 	"strconv"
 	"sync/atomic"
+	"time"
 
 	"github.com/MadhurSahu/tcp-to-http/internal/request"
 	"github.com/MadhurSahu/tcp-to-http/internal/response"
@@ -31,7 +32,10 @@ func (s *Server) Close() error {
 }
 
 func (s *Server) handle(conn net.Conn) {
-	defer conn.Close()
+	defer func() {
+		time.Sleep(50 * time.Millisecond)
+		conn.Close()
+	}()
 	res := response.NewWriter(conn)
 
 	req, err := request.FromReader(conn)
