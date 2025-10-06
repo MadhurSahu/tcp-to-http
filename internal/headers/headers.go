@@ -3,6 +3,7 @@ package headers
 import (
 	"errors"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -15,6 +16,21 @@ func NewHeaders() Headers {
 func (h Headers) Get(key string) (string, bool) {
 	val, ok := h[strings.ToLower(key)]
 	return val, ok
+}
+
+func (h Headers) Set(key, val string) {
+	key = strings.ToLower(key)
+	v, exists := h[key]
+
+	if exists {
+		h[key] = v + ", " + val
+	} else {
+		h[key] = val
+	}
+}
+
+func (h Headers) Overwrite(key, val string) {
+	h[strings.ToLower(key)] = val
 }
 
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
@@ -49,4 +65,12 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	}
 
 	return len(header) + 2, false, nil
+}
+
+func GetDefaultHeaders(contentLen int) Headers {
+	h := NewHeaders()
+	h.Set("Connection", "close")
+	h.Set("Content-Length", strconv.Itoa(contentLen))
+	h.Set("Content-Type", "plain/text")
+	return h
 }
