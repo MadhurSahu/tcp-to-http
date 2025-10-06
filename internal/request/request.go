@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/MadhurSahu/tcp-to-http/internal/headers"
@@ -15,12 +16,14 @@ type status int
 const (
 	requestStatusInitialized = iota
 	requestStatusParsingHeaders
+	requestStatusParsingBody
 	requestStatusDone
 )
 
 type Request struct {
-	Headers     headers.Headers
 	RequestLine Line
+	Headers     headers.Headers
+	Body        []byte
 	status      status
 }
 
@@ -33,6 +36,7 @@ type Line struct {
 func FromReader(reader io.Reader) (*Request, error) {
 	request := &Request{
 		Headers: headers.NewHeaders(),
+		Body:    make([]byte, 0),
 		status:  requestStatusInitialized,
 	}
 	buffer := make([]byte, 8)
@@ -40,7 +44,6 @@ func FromReader(reader io.Reader) (*Request, error) {
 
 	for request.status != requestStatusDone {
 		if bytesRead >= len(buffer) {
-			println("New size:", len(buffer)*2)
 			newBuffer := make([]byte, len(buffer)*2)
 			copy(newBuffer, buffer)
 			buffer = newBuffer
@@ -101,15 +104,38 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 		return n, nil
 	case requestStatusParsingHeaders:
 		n, done, err := r.Headers.Parse(data)
-		if err != nil {
-			return n, err
-		}
 
 		if done {
-			r.status = requestStatusDone
+			r.status = requestStatusParsingBody
+			n += 2
 		}
 
 		return n, err
+	case requestStatusParsingBody:
+		contentLengthHeader, exists := r.Headers.Get("Content-Length")
+
+		if !exists {
+			r.status = requestStatusDone
+			return 0, nil
+		}
+
+		contentLength, err := strconv.Atoi(contentLengthHeader)
+		if err != nil {
+			return 0, fmt.Errorf("invalid content length: %w", err)
+		}
+
+		r.Body = append(r.Body, data...)
+
+		if len(r.Body) == contentLength {
+			r.status = requestStatusDone
+			return 0, nil
+		}
+
+		if len(r.Body) > contentLength {
+			return 0, errors.New("content length exceeded")
+		}
+
+		return len(data), nil
 
 	case requestStatusDone:
 		return 0, errors.New("request already parsed")

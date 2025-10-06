@@ -12,6 +12,11 @@ func NewHeaders() Headers {
 	return make(map[string]string)
 }
 
+func (h Headers) Get(key string) (string, bool) {
+	val, ok := h[strings.ToLower(key)]
+	return val, ok
+}
+
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	str := string(data)
 	if strings.HasPrefix(str, "\r\n") {
